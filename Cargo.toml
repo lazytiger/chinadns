@@ -1,0 +1,27 @@
+[package]
+name = "chinadns"
+version = "0.1.0"
+authors = ["Hoping White <baihaoping@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+trust-dns-server = "0.19"
+log = "0.4"
+cfg-if = "0.1"
+chrono = "0.4"
+libc = "0.2"
+
+[dependencies.async-std]
+version = "1.6"
+features = ["attributes"]
+
+[dependencies.fern]
+version = "0.6"
+features = ["reopen-03"]
+
+[build-dependencies]
+bindgen = "0.55"
+cc = "1.0"
+
