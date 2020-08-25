@@ -115,6 +115,7 @@ async fn receive(socket: Arc<UdpSocket>, addr: SocketAddr, sender: Arc<UdpSocket
     let (size, dst_addr) = socket.recv_from(&mut data).await?;
     let mut decoder = BinDecoder::new(&data.as_slice()[..size]);
     let response = MessageRequest::read(&mut decoder)?;
+    log::debug!("{:?} send response:{:?}", dst_addr, response);
     if dst_addr == RCONFIG.china_addr {
         if response.answers().iter().filter_map(|r| { r.rdata().to_ip_addr() }).filter_map(|ip| {
             if IPSET.test(ip.to_string().as_str()) {
@@ -123,13 +124,14 @@ async fn receive(socket: Arc<UdpSocket>, addr: SocketAddr, sender: Arc<UdpSocket
                 Some(())
             }
         }).count() == 0 {
-            log::debug!("{:?} send response:{:?}", dst_addr, response);
+            log::debug!("china dns returned");
             sender.send_to(&data.as_slice()[..size], addr).await?;
             return Ok(true);
         } else {
             Ok(false)
         }
     } else if dst_addr == RCONFIG.trust_addr {
+        log::debug!("trust dns returned");
         sender.send_to(&data.as_slice()[..size], addr).await?;
         Ok(true)
     } else {
