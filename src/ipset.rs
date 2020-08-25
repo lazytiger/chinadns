@@ -61,7 +61,7 @@ impl IpSet {
     }
 
     pub fn del(&self, ip: &str) -> bool {
-       self.execute("del", ip)
+        self.execute("del", ip)
     }
 
     pub fn test(&self, ip: &str) -> bool {
@@ -92,10 +92,15 @@ impl Drop for IpSet {
     }
 }
 
+unsafe impl Send for IpSet {}
+
+unsafe impl Sync for IpSet {}
+
 #[cfg(test)]
 mod tests {
-    use crate::ipset::IpSet;
     use test::Bencher;
+
+    use crate::ipset::IpSet;
 
     #[test]
     fn test() {
@@ -104,7 +109,7 @@ mod tests {
     }
 
     #[bench]
-    fn benchmark(b:&mut Bencher) {
+    fn benchmark(b: &mut Bencher) {
         let set = IpSet::new("gfwlist".into());
         b.iter(|| set.test("8.8.8.8"));
     }
