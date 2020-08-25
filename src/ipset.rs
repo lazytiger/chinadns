@@ -16,7 +16,18 @@ pub unsafe extern "C" fn rust_error_callback(_: *mut ipset, p: *mut c_void, stat
     log::trace!("error callback:{}, {}", status, msg);
     ipset.set_result(status as isize, msg.into());
     let _ = Box::into_raw(ipset);
+    0
+}
 
+#[no_mangle]
+pub unsafe extern "C" fn rust_session_callback(_: *mut ipset_session, p: *mut c_void, msg: *const c_char) -> c_int {
+    let mut ipset = Box::from_raw(p as *mut IpSet);
+    let msg = CStr::from_ptr(msg);
+    let msg = msg.to_string_lossy();
+    let status = 0;
+    log::trace!("error callback:{}, {}", status, msg);
+    ipset.set_result(status as isize, msg.into());
+    let _ = Box::into_raw(ipset);
     0
 }
 
@@ -42,7 +53,7 @@ impl IpSet {
             status: 0,
         });
         unsafe {
-            ipset_custom_printf(set.set, Some(error_callback), None, None, set.as_mut() as *mut IpSet as *mut c_void);
+            ipset_custom_printf(set.set, Some(error_callback), None, Some(session_callback), set.as_mut() as *mut IpSet as *mut c_void);
         }
         set
     }
