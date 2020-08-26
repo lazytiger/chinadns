@@ -259,6 +259,7 @@ async fn main() -> Result<()> {
 }
 
 async fn receive(
+    domain: String,
     socket: Arc<UdpSocket>,
     addr: SocketAddr,
     sender: Arc<UdpSocket>,
@@ -270,7 +271,7 @@ async fn receive(
     let response = MessageRequest::read(&mut decoder)?;
     if dst_addr == RCONFIG.china_addr {
         if count == 1 {
-            log::info!("china dns return first, checking");
+            log::info!("domain {} resolved by china dns first, checking", domain);
         }
         if response
             .answers()
@@ -278,7 +279,11 @@ async fn receive(
             .filter_map(|r| r.rdata().to_ip_addr())
             .any(|ip| {
                 if !IPSET.test(ip) {
-                    log::info!("china dns return foreign address {}, reject", ip);
+                    log::info!(
+                        "domain {} resolved by china dns as foreign address {}, reject",
+                        domain,
+                        ip
+                    );
                     true
                 } else {
                     false
@@ -287,15 +292,15 @@ async fn receive(
         {
             Ok(false)
         } else {
-            log::info!("china dns returned chinese address, it's ok to send");
+            log::info!("domain {} resolved result returned by china dns", domain);
             sender.send_to(&data.as_slice()[..size], addr).await?;
             Ok(true)
         }
     } else if dst_addr == RCONFIG.trust_addr {
         if count == 1 {
-            log::info!("trust dns returned first");
+            log::info!("domain {} resolved by trust dns first", domain);
         }
-        log::info!("send trust dns result to client");
+        log::info!("domain {} resolved result return by trust dns", domain);
         sender.send_to(&data.as_slice()[..size], addr).await?;
         Ok(true)
     } else {
@@ -310,7 +315,21 @@ async fn dispatch(
     size: usize,
     sender: Arc<UdpSocket>,
 ) -> Result<()> {
-    log::info!("udp request:{:?}", request.queries()[0].name());
+    let domain = request
+        .queries()
+        .iter()
+        .map(|query| {
+            query
+                .original()
+                .name()
+                .iter()
+                .map(|label| String::from_utf8_lossy(label).into())
+                .collect::<Vec<String>>()
+                .join(".")
+        })
+        .collect::<Vec<String>>()
+        .join("|");
+    log::info!("got request to resolve {}", domain);
     let socket = Arc::new(UdpSocket::bind("0.0.0.0:0").await?);
     socket
         .send_to(&data.as_slice()[..size], RCONFIG.trust_addr)
@@ -322,7 +341,9 @@ async fn dispatch(
         let mut count = 0;
         loop {
             count += 1;
-            if let Ok(ok) = receive(socket.clone(), addr, sender.clone(), count).await {
+            if let Ok(ok) =
+                receive(domain.clone(), socket.clone(), addr, sender.clone(), count).await
+            {
                 if ok {
                     break;
                 }
