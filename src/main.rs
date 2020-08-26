@@ -254,13 +254,20 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn receive(socket: Arc<UdpSocket>, addr: SocketAddr, sender: Arc<UdpSocket>) -> Result<bool> {
+async fn receive(
+    socket: Arc<UdpSocket>,
+    addr: SocketAddr,
+    sender: Arc<UdpSocket>,
+    count: usize,
+) -> Result<bool> {
     let mut data = vec![0u8; 1024];
     let (size, dst_addr) = socket.recv_from(&mut data).await?;
     let mut decoder = BinDecoder::new(&data.as_slice()[..size]);
     let response = MessageRequest::read(&mut decoder)?;
     if dst_addr == RCONFIG.china_addr {
-        log::debug!("china dns return first, checking");
+        if count == 1 {
+            log::debug!("china dns return first, checking");
+        }
         if response
             .answers()
             .iter()
@@ -283,7 +290,10 @@ async fn receive(socket: Arc<UdpSocket>, addr: SocketAddr, sender: Arc<UdpSocket
             Ok(false)
         }
     } else if dst_addr == RCONFIG.trust_addr {
-        log::info!("trust dns returned first, it's ok to send");
+        if count == 1 {
+            log::info!("trust dns returned first");
+        }
+        log::info!("send trust dns result to client");
         sender.send_to(&data.as_slice()[..size], addr).await?;
         Ok(true)
     } else {
@@ -307,8 +317,10 @@ async fn dispatch(
         .send_to(&data.as_slice()[..size], RCONFIG.china_addr)
         .await?;
     let t1 = async {
+        let mut count = 0;
         loop {
-            if let Ok(ok) = receive(socket.clone(), addr, sender.clone()).await {
+            count += 1;
+            if let Ok(ok) = receive(socket.clone(), addr, sender.clone(), count).await {
                 if ok {
                     break;
                 }
