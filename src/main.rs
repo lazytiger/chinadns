@@ -300,7 +300,7 @@ async fn receive(
         if count == 1 {
             log::info!("domain {} resolved by trust dns first", domain);
         }
-        log::info!("domain {} resolved result return by trust dns", domain);
+        log::info!("domain {} resolved result returned by trust dns", domain);
         sender.send_to(&data.as_slice()[..size], addr).await?;
         Ok(true)
     } else {
