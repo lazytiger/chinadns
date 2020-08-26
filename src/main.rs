@@ -104,13 +104,9 @@ impl IpSet {
         });
     }
 
-    fn test(&self, ip: IpAddr) -> bool {
-        if let IpAddr::V4(v4) = ip {
-            let ip = Self::ip2int(v4);
-            self.binary_search(ip)
-        } else {
-            false
-        }
+    fn test(&self, ip: Ipv4Addr) -> bool {
+        let ip = Self::ip2int(ip);
+        self.binary_search(ip)
     }
 
     fn binary_search(&self, ip: u32) -> bool {
@@ -133,28 +129,34 @@ impl IpSet {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV6};
     use std::str::FromStr;
 
     use crate::IpSet;
 
     #[test]
     fn test() {
+        let ip = Ipv6Addr::from_str("2002:0000:0000:0000:0000:0000:2766:3395").unwrap();
+        let addr = SocketAddrV6::new(ip, 2130, 0, 0);
+        println!("{}", addr.to_string());
+        if let Err(err) = SocketAddrV6::from_str("[2002:0000:0000:0000:0000:0000:2766:3395]:2130") {
+            println!("{}", err);
+        }
         let set = IpSet::new("/etc/chinaipset".into());
         println!("data length is {}", set.data.len());
 
         //let ip = Ipv4Addr::from_str("114.114.114.114").unwrap();
         let ip = Ipv4Addr::from_str("103.31.160.0").unwrap();
-        assert!(set.test(IpAddr::V4(ip)));
+        assert!(set.test(ip));
 
         let ip = Ipv4Addr::from_str("103.31.160.1").unwrap();
-        assert!(set.test(IpAddr::V4(ip)));
+        assert!(set.test(ip));
 
         let ip = Ipv4Addr::from_str("61.240.132.235").unwrap();
-        assert!(set.test(IpAddr::V4(ip)));
+        assert!(set.test(ip));
 
         let ip = Ipv4Addr::from_str("119.249.58.219").unwrap();
-        assert!(set.test(IpAddr::V4(ip)));
+        assert!(set.test(ip));
     }
 }
 
@@ -278,13 +280,17 @@ async fn receive(
             .iter()
             .filter_map(|r| r.rdata().to_ip_addr())
             .any(|ip| {
-                if !IPSET.test(ip) {
-                    log::info!(
-                        "domain {} resolved by china dns as foreign address {}, reject",
-                        domain,
-                        ip
-                    );
-                    true
+                if let IpAddr::V4((ip)) = ip {
+                    if !IPSET.test(ip) {
+                        log::info!(
+                            "domain {} resolved by china dns as foreign address {}, reject",
+                            domain,
+                            ip
+                        );
+                        true
+                    } else {
+                        false
+                    }
                 } else {
                     false
                 }
