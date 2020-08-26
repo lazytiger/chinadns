@@ -276,23 +276,20 @@ async fn receive(
             .answers()
             .iter()
             .filter_map(|r| r.rdata().to_ip_addr())
-            .filter_map(|ip| {
-                if IPSET.test(ip) {
-                    log::info!("china dns received chinese address:{}, ignore", ip);
-                    None
+            .any(|ip| {
+                if !IPSET.test(ip) {
+                    log::info!("china dns return foreign address {}, reject", ip);
+                    true
                 } else {
-                    log::info!("china dns received foreign address:{}, ignore", ip);
-                    Some(())
+                    false
                 }
             })
-            .count()
-            == 0
         {
+            Ok(false)
+        } else {
             log::info!("china dns returned chinese address, it's ok to send");
             sender.send_to(&data.as_slice()[..size], addr).await?;
             Ok(true)
-        } else {
-            Ok(false)
         }
     } else if dst_addr == RCONFIG.trust_addr {
         if count == 1 {
