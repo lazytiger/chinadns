@@ -96,14 +96,11 @@ impl IpSet {
         } else {
             return;
         }
-        self.data.sort_by(|d1, d2| {
-            let n = d1.low as i32 - d2.low as i32;
-            match n {
-                _ if n < 0 => Ordering::Less,
-                _ if n == 0 => Ordering::Equal,
-                _ if n > 0 => Ordering::Greater,
-                _ => unreachable!(),
-            }
+        self.data.sort_by(|d1, d2| match 1 {
+            _ if d1.low < d2.low => Ordering::Less,
+            _ if d1.low == d2.low => Ordering::Equal,
+            _ if d1.low > d2.low => Ordering::Greater,
+            _ => unreachable!(),
         });
     }
 
@@ -119,7 +116,7 @@ impl IpSet {
     fn binary_search(&self, ip: u32) -> bool {
         let mut low = 0;
         let mut high = self.data.len();
-        while low < high {
+        while low <= high {
             let pos = (high + low) / 2;
             let data = &self.data[pos];
             if data.contains(ip) {
@@ -151,6 +148,12 @@ mod tests {
         assert!(set.test(IpAddr::V4(ip)));
 
         let ip = Ipv4Addr::from_str("103.31.160.1").unwrap();
+        assert!(set.test(IpAddr::V4(ip)));
+
+        let ip = Ipv4Addr::from_str("61.240.132.235").unwrap();
+        assert!(set.test(IpAddr::V4(ip)));
+
+        let ip = Ipv4Addr::from_str("119.249.58.219").unwrap();
         assert!(set.test(IpAddr::V4(ip)));
     }
 }
@@ -243,6 +246,7 @@ fn setup_logger(logfile: &Option<String>, level: u8) {
 async fn main() -> Result<()> {
     setup_logger(&CONFIG.log_file, CONFIG.log_level);
     log::warn!("server started");
+    log::info!("ipset contains {} items", IPSET.data.len());
     let listener = Arc::new(UdpSocket::bind(CONFIG.listen_addr.as_str()).await?);
     let mut buf = vec![0u8; 1024];
     log::warn!("start listening");
@@ -274,9 +278,10 @@ async fn receive(
             .filter_map(|r| r.rdata().to_ip_addr())
             .filter_map(|ip| {
                 if IPSET.test(ip) {
+                    log::info!("china dns received chinese address:{}, ignore", ip);
                     None
                 } else {
-                    log::info!("china dns received foreign address, ignore");
+                    log::info!("china dns received foreign address:{}, ignore", ip);
                     Some(())
                 }
             })
@@ -308,7 +313,7 @@ async fn dispatch(
     size: usize,
     sender: Arc<UdpSocket>,
 ) -> Result<()> {
-    log::debug!("udp request:{:?}", request.queries()[0].name());
+    log::info!("udp request:{:?}", request.queries()[0].name());
     let socket = Arc::new(UdpSocket::bind("0.0.0.0:0").await?);
     socket
         .send_to(&data.as_slice()[..size], RCONFIG.trust_addr)
