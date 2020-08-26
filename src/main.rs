@@ -31,49 +31,51 @@ impl IpRange {
 }
 
 struct IpSet {
-    data: Vec<IpRange>
+    data: Vec<IpRange>,
 }
 
 impl IpSet {
     fn new(file: String) -> IpSet {
-        let mut set = IpSet {
-            data: Vec::new(),
-        };
+        let mut set = IpSet { data: Vec::new() };
         set.init(file);
         set
     }
 
     fn ip2int(ip: Ipv4Addr) -> u32 {
         let some = ip.octets();
-        let int = (some[0] as u32) << 24 | (some[1] as u32) << 16 | (some[2] as u32) << 8 | (some[3] as u32);
-        int
+        (some[0] as u32) << 24 | (some[1] as u32) << 16 | (some[2] as u32) << 8 | (some[3] as u32)
     }
 
     fn init(&mut self, file: String) {
         if let Ok(file) = File::open(file) {
             let reader = BufReader::new(file);
-            self.data = reader.lines().filter_map(|line| {
-                if let Ok(line) = line {
-                    if line.contains("add") {
-                        if let Some(cidr) = line.split(" ").nth(2) {
-                            let data: Vec<&str> = cidr.split("/").collect();
-                            if data.len() == 1 {
-                                if let Ok(ip) = Ipv4Addr::from_str(data[0]) {
-                                    let ip = Self::ip2int(ip);
-                                    Some(IpRange::new(ip, ip))
-                                } else {
-                                    None
-                                }
-                            } else if data.len() == 2 {
-                                if let Ok(ip) = Ipv4Addr::from_str(data[0]) {
-                                    if let Ok(mask) = u32::from_str(data[1]) {
-                                        let mut ip = Self::ip2int(ip);
-                                        let mask = (1 << (32 - mask)) - 1;
-                                        if ip != ip & !mask {
-                                            log::error!("invalid ipset file format");
-                                            ip = ip & !mask;
+            self.data = reader
+                .lines()
+                .filter_map(|line| {
+                    if let Ok(line) = line {
+                        if line.contains("add") {
+                            if let Some(cidr) = line.split(' ').nth(2) {
+                                let data: Vec<&str> = cidr.split('/').collect();
+                                if data.len() == 1 {
+                                    if let Ok(ip) = Ipv4Addr::from_str(data[0]) {
+                                        let ip = Self::ip2int(ip);
+                                        Some(IpRange::new(ip, ip))
+                                    } else {
+                                        None
+                                    }
+                                } else if data.len() == 2 {
+                                    if let Ok(ip) = Ipv4Addr::from_str(data[0]) {
+                                        if let Ok(mask) = u32::from_str(data[1]) {
+                                            let mut ip = Self::ip2int(ip);
+                                            let mask = (1 << (32 - mask)) - 1;
+                                            if ip != ip & !mask {
+                                                log::error!("invalid ipset file format");
+                                                ip &= !mask;
+                                            }
+                                            Some(IpRange::new(ip, ip + mask))
+                                        } else {
+                                            None
                                         }
-                                        Some(IpRange::new(ip, ip + mask))
                                     } else {
                                         None
                                     }
@@ -89,20 +91,18 @@ impl IpSet {
                     } else {
                         None
                     }
-                } else {
-                    None
-                }
-            }).collect();
+                })
+                .collect();
         } else {
             return;
         }
         self.data.sort_by(|d1, d2| {
-            if d1.low < d2.low {
-                Ordering::Less
-            } else if d1.low == d2.low {
-                Ordering::Equal
-            } else {
-                Ordering::Greater
+            let n = d1.low as i32 - d2.low as i32;
+            match n {
+                _ if n < 0 => Ordering::Less,
+                _ if n == 0 => Ordering::Equal,
+                _ if n > 0 => Ordering::Greater,
+                _ => unreachable!(),
             }
         });
     }
@@ -134,6 +134,7 @@ impl IpSet {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
     use std::str::FromStr;
@@ -155,7 +156,11 @@ mod tests {
 }
 
 #[derive(Clap)]
-#[clap(version = "0.1", author = "Hoping White", about = "A chinadns implementation using rust")]
+#[clap(
+    version = "0.1",
+    author = "Hoping White",
+    about = "A chinadns implementation using rust"
+)]
 struct Config {
     #[clap(short, long, about = "trust dns address, ip:port")]
     trust_dns: String,
@@ -167,7 +172,11 @@ struct Config {
     listen_addr: String,
     #[clap(short = "f", long, about = "log file path")]
     log_file: Option<String>,
-    #[clap(short = "o", long, about = "log level, 0:trace, 1:debug, 2:info, 3:warning, 4:error")]
+    #[clap(
+        short = "o",
+        long,
+        about = "log level, 0:trace, 1:debug, 2:info, 3:warning, 4:error"
+    )]
     log_level: u8,
     #[clap(short = "m", long, about = "timeout time for request")]
     timeout: u64,
@@ -180,9 +189,7 @@ struct RConfig {
 }
 
 lazy_static! {
-    static ref CONFIG: Config = {
-        Config::parse()
-    };
+    static ref CONFIG: Config = Config::parse();
     static ref RCONFIG: RConfig = {
         let trust_addr = CONFIG.trust_dns.as_str().parse().unwrap();
         let china_addr = CONFIG.china_dns.as_str().parse().unwrap();
@@ -193,9 +200,7 @@ lazy_static! {
             timeout_duration,
         }
     };
-    static ref IPSET: IpSet = {
-        IpSet::new(CONFIG.china_ipset.clone())
-    };
+    static ref IPSET: IpSet = IpSet::new(CONFIG.china_ipset.clone());
 }
 
 fn setup_logger(logfile: &Option<String>, level: u8) {
@@ -256,22 +261,29 @@ async fn receive(socket: Arc<UdpSocket>, addr: SocketAddr, sender: Arc<UdpSocket
     let response = MessageRequest::read(&mut decoder)?;
     if dst_addr == RCONFIG.china_addr {
         log::debug!("china dns return first, checking");
-        if response.answers().iter().filter_map(|r| { r.rdata().to_ip_addr() }).filter_map(|ip| {
-            if IPSET.test(ip) {
-                None
-            } else {
-                log::debug!("china dns received foreign address, ignore");
-                Some(())
-            }
-        }).count() == 0 {
-            log::debug!("china dns returned chinese address, it's ok to send");
+        if response
+            .answers()
+            .iter()
+            .filter_map(|r| r.rdata().to_ip_addr())
+            .filter_map(|ip| {
+                if IPSET.test(ip) {
+                    None
+                } else {
+                    log::info!("china dns received foreign address, ignore");
+                    Some(())
+                }
+            })
+            .count()
+            == 0
+        {
+            log::info!("china dns returned chinese address, it's ok to send");
             sender.send_to(&data.as_slice()[..size], addr).await?;
-            return Ok(true);
+            Ok(true)
         } else {
             Ok(false)
         }
     } else if dst_addr == RCONFIG.trust_addr {
-        log::debug!("trust dns returned first, it's ok to send");
+        log::info!("trust dns returned first, it's ok to send");
         sender.send_to(&data.as_slice()[..size], addr).await?;
         Ok(true)
     } else {
@@ -279,11 +291,21 @@ async fn receive(socket: Arc<UdpSocket>, addr: SocketAddr, sender: Arc<UdpSocket
     }
 }
 
-async fn dispatch(request: MessageRequest, addr: SocketAddr, data: Vec<u8>, size: usize, sender: Arc<UdpSocket>) -> Result<()> {
+async fn dispatch(
+    request: MessageRequest,
+    addr: SocketAddr,
+    data: Vec<u8>,
+    size: usize,
+    sender: Arc<UdpSocket>,
+) -> Result<()> {
     log::debug!("udp request:{:?}", request.queries()[0].name());
     let socket = Arc::new(UdpSocket::bind("0.0.0.0:0").await?);
-    socket.send_to(&data.as_slice()[..size], RCONFIG.trust_addr).await?;
-    socket.send_to(&data.as_slice()[..size], RCONFIG.china_addr).await?;
+    socket
+        .send_to(&data.as_slice()[..size], RCONFIG.trust_addr)
+        .await?;
+    socket
+        .send_to(&data.as_slice()[..size], RCONFIG.china_addr)
+        .await?;
     let t1 = async {
         loop {
             if let Ok(ok) = receive(socket.clone(), addr, sender.clone()).await {
