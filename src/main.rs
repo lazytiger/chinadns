@@ -55,15 +55,12 @@ impl IpSet {
                     if let Ok(line) = line {
                         if line.contains("add") {
                             if let Some(cidr) = line.split(' ').nth(2) {
-                                let data: Vec<&str> = cidr.split('/').collect();
+                                let mut data: Vec<&str> = cidr.split('/').collect();
                                 if data.len() == 1 {
-                                    if let Ok(ip) = Ipv4Addr::from_str(data[0]) {
-                                        let ip = Self::ip2int(ip);
-                                        Some(IpRange::new(ip, ip))
-                                    } else {
-                                        None
-                                    }
-                                } else if data.len() == 2 {
+                                    data.push("32");
+                                }
+
+                                if data.len() == 2 {
                                     if let Ok(ip) = Ipv4Addr::from_str(data[0]) {
                                         if let Ok(mask) = u32::from_str(data[1]) {
                                             let mut ip = Self::ip2int(ip);
@@ -72,25 +69,14 @@ impl IpSet {
                                                 log::error!("invalid ipset file format");
                                                 ip &= !mask;
                                             }
-                                            Some(IpRange::new(ip, ip + mask))
-                                        } else {
-                                            None
+                                            return Some(IpRange::new(ip, ip + mask));
                                         }
-                                    } else {
-                                        None
                                     }
-                                } else {
-                                    None
                                 }
-                            } else {
-                                None
                             }
-                        } else {
-                            None
                         }
-                    } else {
-                        None
                     }
+                    return None;
                 })
                 .collect();
         } else {
@@ -129,19 +115,13 @@ impl IpSet {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV6};
+    use std::net::Ipv4Addr;
     use std::str::FromStr;
 
     use crate::IpSet;
 
     #[test]
     fn test() {
-        let ip = Ipv6Addr::from_str("2002:0000:0000:0000:0000:0000:2766:3395").unwrap();
-        let addr = SocketAddrV6::new(ip, 2130, 0, 0);
-        println!("{}", addr.to_string());
-        if let Err(err) = SocketAddrV6::from_str("[2002:0000:0000:0000:0000:0000:2766:3395]:2130") {
-            println!("{}", err);
-        }
         let set = IpSet::new("/etc/chinaipset".into());
         println!("data length is {}", set.data.len());
 
@@ -280,20 +260,17 @@ async fn receive(
             .iter()
             .filter_map(|r| r.rdata().to_ip_addr())
             .any(|ip| {
-                if let IpAddr::V4((ip)) = ip {
+                if let IpAddr::V4(ip) = ip {
                     if !IPSET.test(ip) {
                         log::info!(
                             "domain {} resolved by china dns as foreign address {}, reject",
                             domain,
                             ip
                         );
-                        true
-                    } else {
-                        false
+                        return true;
                     }
-                } else {
-                    false
                 }
+                return false;
             })
         {
             Ok(false)
