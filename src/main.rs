@@ -266,7 +266,7 @@ async fn receive(
     let response = MessageRequest::read(&mut decoder)?;
     if dst_addr == RCONFIG.china_addr {
         if count == 1 {
-            log::debug!("china dns return first, checking");
+            log::info!("china dns return first, checking");
         }
         if response
             .answers()
