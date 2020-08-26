@@ -25,11 +25,25 @@ pub unsafe extern "C" fn rust_session_callback(_: *mut ipset_session, p: *mut c_
     let msg = CStr::from_ptr(msg);
     let msg = msg.to_string_lossy();
     let status = 0;
-    log::trace!("error callback:{}, {}", status, msg);
+    log::trace!("session callback:{}, {}", status, msg);
     ipset.set_result(status as isize, msg.into());
     let _ = Box::into_raw(ipset);
     0
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_standard_callback(set: *mut ipset, p: *mut c_void) -> c_int {
+    let mut ipset = Box::from_raw(p as *mut IpSet);
+    let session = ipset_session(set);
+    let msg = ipset_session_report_msg(session);
+    let status = 1;
+    let msg = CStr::from_ptr(msg).to_string_lossy();
+    log::trace!("standard callback:{}, {}", status, msg);
+    ipset.set_result(status as isize, msg.into());
+    let _ = Box::into_raw(ipset);
+    0
+}
+
 
 pub struct IpSet {
     name: String,
@@ -53,7 +67,7 @@ impl IpSet {
             status: 0,
         });
         unsafe {
-            ipset_custom_printf(set.set, Some(error_callback), None, Some(session_callback), set.as_mut() as *mut IpSet as *mut c_void);
+            ipset_custom_printf(set.set, Some(error_callback), Some(rust_standard_callback), Some(session_callback), set.as_mut() as *mut IpSet as *mut c_void);
         }
         set
     }
@@ -109,19 +123,12 @@ unsafe impl Sync for IpSet {}
 
 #[cfg(test)]
 mod tests {
-    use test::Bencher;
 
     use crate::ipset::IpSet;
 
     #[test]
     fn test() {
-        let set = IpSet::new("gfwlist".into());
+        let set = IpSet::new("chslist".into());
         set.execute("test".into(), "8.8.8.8".into());
-    }
-
-    #[bench]
-    fn benchmark(b: &mut Bencher) {
-        let set = IpSet::new("gfwlist".into());
-        b.iter(|| set.test("8.8.8.8"));
     }
 }

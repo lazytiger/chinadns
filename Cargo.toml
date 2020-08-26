@@ -27,3 +27,8 @@ features = ["reopen-03"]
 bindgen = "0.55"
 cc = "1.0"
 
+[workspace]
+members = [
+    "ipset"
+]
+

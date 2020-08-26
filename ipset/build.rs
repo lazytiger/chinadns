@@ -29,6 +29,8 @@ fn main() {
         .whitelist_function("ipset_load_types")
         .whitelist_function("error_callback")
         .whitelist_function("session_callback")
+        .whitelist_function("ipset_session_report_msg")
+        .whitelist_function("ipset_session")
         // Finish the builder and generate the bindings.
         .generate()
         // Unwrap the Result and panic on failure.
