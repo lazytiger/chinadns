@@ -76,7 +76,7 @@ impl IpSet {
                             }
                         }
                     }
-                    return None;
+                    None
                 })
                 .collect();
         } else {
@@ -270,7 +270,7 @@ async fn receive(
                         return true;
                     }
                 }
-                return false;
+                false
             })
         {
             Ok(false)
