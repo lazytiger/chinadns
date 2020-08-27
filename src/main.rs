@@ -251,6 +251,10 @@ async fn receive(
     let (size, dst_addr) = socket.recv_from(&mut data).await?;
     let mut decoder = BinDecoder::new(&data.as_slice()[..size]);
     let response = MessageRequest::read(&mut decoder)?;
+    if count == 1 && response.answers().is_empty() {
+        log::info!("domain {} got empty response by {}", domain, dst_addr);
+        return Ok(false);
+    }
     if dst_addr == RCONFIG.china_addr {
         if count == 1 {
             log::info!("domain {} resolved by china dns first, checking", domain);
@@ -272,7 +276,6 @@ async fn receive(
                 }
                 false
             })
-            || response.answers().is_empty()
         {
             Ok(false)
         } else {
