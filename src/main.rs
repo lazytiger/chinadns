@@ -251,12 +251,6 @@ async fn receive(
     let (size, dst_addr) = socket.recv_from(&mut data).await?;
     let mut decoder = BinDecoder::new(&data.as_slice()[..size]);
     let response = MessageRequest::read(&mut decoder)?;
-    log::info!(
-        "domain {} got {} addresses by {}",
-        domain,
-        response.answers().len(),
-        dst_addr
-    );
     let answer_cnt = response
         .answers()
         .iter()
@@ -269,6 +263,12 @@ async fn receive(
             return false;
         })
         .count();
+    log::info!(
+        "domain {} got {} addresses by {}",
+        domain,
+        response.answers().len(),
+        dst_addr
+    );
     if count == 1 && answer_cnt == 0 {
         return Ok(false);
     }
