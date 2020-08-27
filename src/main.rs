@@ -264,8 +264,9 @@ async fn receive(
         })
         .count();
     log::info!(
-        "domain {} got {} addresses by {}",
+        "domain {} got {}/{} addresses by {}",
         domain,
+        answer_cnt,
         response.answers().len(),
         dst_addr
     );
