@@ -272,6 +272,7 @@ async fn receive(
                 }
                 false
             })
+            || response.answers().is_empty()
         {
             Ok(false)
         } else {
@@ -333,7 +334,10 @@ async fn dispatch(
             }
         }
     };
-    let t2 = task::sleep(RCONFIG.timeout_duration);
+    let t2 = async {
+        task::sleep(RCONFIG.timeout_duration).await;
+        log::warn!("resolve {} timeout", domain);
+    };
     t1.race(t2).await;
     Ok(())
 }
