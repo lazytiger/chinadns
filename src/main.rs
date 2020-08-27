@@ -251,6 +251,17 @@ async fn receive(
     let (size, dst_addr) = socket.recv_from(&mut data).await?;
     let mut decoder = BinDecoder::new(&data.as_slice()[..size]);
     let response = MessageRequest::read(&mut decoder)?;
+    let rdomain = extract_query(&response);
+    if rdomain != domain {
+        log::warn!(
+            "domain {} != {}, ignored result by {}",
+            domain,
+            rdomain,
+            dst_addr
+        );
+        return Ok(false);
+    }
+    /*
     let answer_cnt = response
         .answers()
         .iter()
@@ -263,6 +274,8 @@ async fn receive(
             return false;
         })
         .count();
+     */
+    let answer_cnt = response.answers().len();
     log::info!(
         "domain {} got {}/{} addresses by {}",
         domain,
@@ -279,16 +292,15 @@ async fn receive(
             .iter()
             .filter_map(|r| r.rdata().to_ip_addr())
             .any(|ip| {
-                if let IpAddr::V4(ip) = ip {
-                    if !IPSET.test(ip) {
-                        log::info!(
-                            "domain {} resolved by {} as foreign address {}, reject",
-                            domain,
-                            dst_addr,
-                            ip
-                        );
-                        return true;
-                    }
+                let ip = ipaddr2v4(ip);
+                if !IPSET.test(ip) {
+                    log::info!(
+                        "domain {} resolved by {} as foreign address {}, reject",
+                        domain,
+                        dst_addr,
+                        ip
+                    );
+                    return true;
                 }
                 false
             })
@@ -304,14 +316,8 @@ async fn receive(
     Ok(true)
 }
 
-async fn dispatch(
-    request: MessageRequest,
-    addr: SocketAddr,
-    data: Vec<u8>,
-    size: usize,
-    sender: Arc<UdpSocket>,
-) -> Result<()> {
-    let domain = request
+fn extract_query(request: &MessageRequest) -> String {
+    request
         .queries()
         .iter()
         .map(|query| {
@@ -324,7 +330,28 @@ async fn dispatch(
                 .join(".")
         })
         .collect::<Vec<String>>()
-        .join("|");
+        .join("|")
+}
+
+fn ipaddr2v4(ip: IpAddr) -> Ipv4Addr {
+    match ip {
+        IpAddr::V4(v4) => v4,
+        IpAddr::V6(v6) => {
+            log::info!("found ipv6:{}", v6);
+            let octets = v6.octets();
+            Ipv4Addr::new(octets[12], octets[13], octets[14], octets[15])
+        }
+    }
+}
+
+async fn dispatch(
+    request: MessageRequest,
+    addr: SocketAddr,
+    data: Vec<u8>,
+    size: usize,
+    sender: Arc<UdpSocket>,
+) -> Result<()> {
+    let domain = extract_query(&request);
     log::info!("got request to resolve {}", domain);
     let socket = Arc::new(UdpSocket::bind("0.0.0.0:0").await?);
     socket
