@@ -251,14 +251,28 @@ async fn receive(
     let (size, dst_addr) = socket.recv_from(&mut data).await?;
     let mut decoder = BinDecoder::new(&data.as_slice()[..size]);
     let response = MessageRequest::read(&mut decoder)?;
-    if count == 1 && response.answers().is_empty() {
-        log::info!("domain {} got empty response by {}", domain, dst_addr);
+    log::info!(
+        "domain {} got {} addresses by {}",
+        domain,
+        response.answers().len(),
+        dst_addr
+    );
+    let answer_cnt = response
+        .answers()
+        .iter()
+        .filter(|record| {
+            if let Some(ip) = record.rdata().to_ip_addr() {
+                if ip.is_ipv4() {
+                    return true;
+                }
+            }
+            return false;
+        })
+        .count();
+    if count == 1 && answer_cnt == 0 {
         return Ok(false);
     }
     if dst_addr == RCONFIG.china_addr {
-        if count == 1 {
-            log::info!("domain {} resolved by china dns first, checking", domain);
-        }
         if response
             .answers()
             .iter()
@@ -267,8 +281,9 @@ async fn receive(
                 if let IpAddr::V4(ip) = ip {
                     if !IPSET.test(ip) {
                         log::info!(
-                            "domain {} resolved by china dns as foreign address {}, reject",
+                            "domain {} resolved by {} as foreign address {}, reject",
                             domain,
+                            dst_addr,
                             ip
                         );
                         return true;
@@ -277,22 +292,15 @@ async fn receive(
                 false
             })
         {
-            Ok(false)
-        } else {
-            log::info!("domain {} resolved result returned by china dns", domain);
-            sender.send_to(&data.as_slice()[..size], addr).await?;
-            Ok(true)
+            return Ok(false);
         }
-    } else if dst_addr == RCONFIG.trust_addr {
-        if count == 1 {
-            log::info!("domain {} resolved by trust dns first", domain);
-        }
-        log::info!("domain {} resolved result returned by trust dns", domain);
-        sender.send_to(&data.as_slice()[..size], addr).await?;
-        Ok(true)
-    } else {
-        Ok(false)
+    } else if dst_addr != RCONFIG.trust_addr {
+        return Ok(false);
     }
+
+    sender.send_to(&data.as_slice()[..size], addr).await?;
+    log::info!("domain {} return result resolved by {}", domain, dst_addr);
+    Ok(true)
 }
 
 async fn dispatch(
